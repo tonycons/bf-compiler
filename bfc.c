@@ -32,104 +32,71 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+typedef uint8_t u8;
+typedef size_t usize;
+typedef int32_t i32;
 
 struct
 {
     char* src;
-    size_t src_pos;
-    uint8_t* exec_buf;
-    size_t exec_size;
-    size_t exec_pos;
-    size_t scope;
+    usize src_pos;
+    u8* exec_buf;
+    usize exec_size;
+    usize exec_pos;
+    usize scope;
 } ctx;
 
 
-void gen(char op, uint8_t* out_asm, size_t* out_asm_pos, size_t* out_src_pos)
+void gen(char op, u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
 {
-    assert(out_asm != NULL);
-    assert(out_src_pos != NULL);
-    assert(out_asm_pos != NULL);
-
     switch (op) {
     // Increment the data pointer by one (to point to the next cell to the right).
     case '>': {
-        static uint8_t const code[] = {
-            0x48,
-            0xff,
-            0xc6,  // inc rsi
-        };
-        memcpy(out_asm, code, sizeof(code));
-        *out_asm_pos += sizeof(code);
+        memcpy(out_asm, (u8[]){0x48, 0xff, 0xc6 /* inc rsi */}, 3);
+        *out_asm_pos += 3;
         break;
     }
     // Decrement the data pointer by one (to point to the next cell to the left). Undefined if at 0.
     case '<': {
-        static uint8_t const code[] = {
-            0x48,
-            0xff,
-            0xce,  // dec rsi
-        };
-        memcpy(out_asm, code, sizeof(code));
-        *out_asm_pos += sizeof(code);
+        memcpy(out_asm, (u8[]){0x48, 0xff, 0xce /* dec rsi */}, 3);
+        *out_asm_pos += 3;
         break;
     }
     // Increment the byte at the data pointer by one modulo 256.
     case '+': {
-        size_t count = 0;
-        for (size_t i = 0; ctx.src[*out_src_pos + i] == '+'; i++) {
+        usize count = 0;
+        for (usize i = 0; ctx.src[*out_src_pos + i] == '+'; i++) {
             ++count;
         }
         if (count == 1) {
-
-            static uint8_t const code[] = {
-                0xfe,
-                0x06,  // inc byte [rsi]
-            };
-
-            memcpy(out_asm, code, sizeof(code));
-            *out_asm_pos += sizeof(code);
+            memcpy(out_asm, (u8[]){0xfe, 0x06 /* inc byte [rsi] */}, 2);
+            *out_asm_pos += 2;
         } else {
-
-            uint8_t code[] = {
-                0x80,
-                0x06,
-                (uint8_t)count,  // add byte [rsi], count
-            };
-
-            memcpy(out_asm, code, sizeof(code));
-            *out_asm_pos += sizeof(code);
+            memcpy(out_asm, (u8[]){0x80, 0x06, (u8)count /* add byte [rsi], count */}, 3);
+            *out_asm_pos += 3;
         }
         (*out_src_pos) += count;
         return;
     }
     // Decrement the byte at the data pointer by one modulo 256.
     case '-': {
-        size_t count = 0;
-        for (size_t i = 0; ctx.src[*out_src_pos + i] == '-'; i++) {
+        usize count = 0;
+        for (usize i = 0; ctx.src[*out_src_pos + i] == '-'; i++) {
             ++count;
         }
         if (count == 1) {
-            static uint8_t const code[] = {
-                0xfe,
-                0x0e,  // dec byte [rsi]
-            };
-            memcpy(out_asm, code, sizeof(code));
-            *out_asm_pos += sizeof(code);
+            memcpy(out_asm, (u8[]){0xfe, 0x0e /* dec byte [rsi] */}, 2);
+            *out_asm_pos += 2;
         } else {
-            uint8_t code[] = {
-                0x80,
-                0x2e,
-                (uint8_t)count,  // sub byte [rsi], count
-            };
-            memcpy(out_asm, code, sizeof(code));
-            *out_asm_pos += sizeof(code);
+            memcpy(out_asm, (u8[]){0x80, 0x2e, (u8)count /* sub byte [rsi], count */}, 3);
+            *out_asm_pos += 3;
         }
         (*out_src_pos) += count;
         return;
     }
     // Output the byte at the data pointer.
     case '.': {
-        static uint8_t const code[] = {
+        static u8 const code[] = {
             0xbf, 0x01, 0x00, 0x00, 0x00,  // mov edi, 1
             0xb8, 0x01, 0x00, 0x00, 0x00,  // mov eax, 1
             0x0f, 0x05,                    // syscall
@@ -140,7 +107,7 @@ void gen(char op, uint8_t* out_asm, size_t* out_asm_pos, size_t* out_src_pos)
     }
     // Accept one byte of input, storing its value in the byte at the data pointer.
     case ',': {
-        static uint8_t const code[] = {
+        static u8 const code[] = {
             0x31, 0xc0,  // xor eax, eax
             0x31, 0xff,  // xor edi, edi
             0x0f, 0x05,  // syscall
@@ -152,16 +119,13 @@ void gen(char op, uint8_t* out_asm, size_t* out_asm_pos, size_t* out_src_pos)
     // If the byte at the data pointer is zero, then instead of moving the instruction pointer forward to the next
     // command, jump it forward to the command after the matching ] command.
     case '[': {
-        size_t byte_offset = 9;
-        size_t src_offset = 0;
-        size_t depth = ctx.scope;
+        usize byte_offset = 9;
+        usize src_offset = 0;
+        usize depth = ctx.scope;
+        ++ctx.scope;
 
-        ctx.scope++;
-
-        // find the offset to the matching ]
-
-        for (src_offset = 1; depth != ctx.scope;)  //
-        {
+        // find the offset to the matching ']'
+        for (src_offset = 1; depth != ctx.scope;) {
             assert(ctx.src[*out_src_pos + src_offset] != '\0');
             switch (ctx.src[*out_src_pos + src_offset]) {
             case '>':
@@ -169,7 +133,7 @@ void gen(char op, uint8_t* out_asm, size_t* out_asm_pos, size_t* out_src_pos)
             case '-':
             case '+': {
                 char ch = ctx.src[*out_src_pos + src_offset];
-                size_t n = 0;
+                usize n = 0;
                 while (ctx.src[*out_src_pos + src_offset + n] == ch) {
                     ++n;
                 }
@@ -193,23 +157,20 @@ void gen(char op, uint8_t* out_asm, size_t* out_asm_pos, size_t* out_src_pos)
         assert(byte_offset != 0);
         assert(src_offset != 0);
 
-        // printf("jump ahead %zu positions & %zu bytes\n", src_offset, byte_offset);
-        // printf("begin of loop: %d\n", (int32_t)(*out_asm_pos + byte_offset) - ((int32_t)byte_offset));
-
         union {
-            int32_t x;
-            uint8_t b[4];
+            i32 x;
+            u8 b[4];
         } u = {.x = byte_offset - 9};
         union {
-            int32_t x;
-            uint8_t b[4];
-        } v = {.x = -((int32_t)byte_offset) + 9};
+            i32 x;
+            u8 b[4];
+        } v = {.x = -((i32)byte_offset) + 9};
 
-        uint8_t start_loop_code[] = {
+        u8 start_loop_code[] = {
             0x80, 0x3e, 0x00,                           // cmp byte [rsi], 0
             0x0f, 0x84, u.b[0], u.b[1], u.b[2], u.b[3]  // jz [rip+offset]     (near jump)
         };
-        uint8_t end_loop_code[] = {
+        u8 end_loop_code[] = {
             0x80, 0x3e, 0x00,                           // cmp byte [rsi], 0
             0x0f, 0x85, v.b[0], v.b[1], v.b[2], v.b[3]  // jnz [rip + offset]
         };
@@ -258,16 +219,16 @@ void jit()
     */
     ctx.exec_pos = 0;
     // clang-format off
-    uint8_t init_code[] = {
+    u8 init_code[] = {
         0x48, 0xc7, 0xc0, 0x00, 0x80, 0x00, 0x00,           // mov rax, 0x8000
         0x48, 0x29, 0xc4,                                   // sub rsp, rax
         0x48, 0x83, 0xe8, 0x08,                             // sub rax, 8
         0x48, 0xc7, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,     // loop: mov qword [rsp+rax], 0
-        0x48,0x83,0xe8,0x08,                                // sub rax, 8
-        0x48,0x85,0xc0,                                     // test rax, rax
-        0x75,0xef,                                          // jnz loop
-        0xba,0x01,0x00,0x00,0x00,                           // mov edx, 1 (edx=1 will never change for syscalls)
-        0x48,0x89,0xe6,                                     // mov rsi, rsp
+        0x48, 0x83, 0xe8, 0x08,                             // sub rax, 8
+        0x48, 0x85, 0xc0,                                   // test rax, rax
+        0x75, 0xef,                                         // jnz loop
+        0xba, 0x01, 0x00, 0x00, 0x00,                       // mov edx, 1 (edx=1 will never change for syscalls)
+        0x48, 0x89, 0xe6,                                   // mov rsi, rsp
     };
     // clang-format on
     memcpy(ctx.exec_buf, init_code, sizeof(init_code));
@@ -280,7 +241,7 @@ void jit()
     }
 
     // Insert final code
-    uint8_t code[] = {
+    u8 code[] = {
         0x48, 0x81, 0xc4, 0x00, 0x80, 0x00, 0x00,  // add rsp, 0x8000  (restore stack)
         0x31, 0xff,                                // xor edi, edi
         0xb8, 0x3c, 0x00, 0x00, 0x00,              // mov eax, 60
@@ -299,28 +260,28 @@ void jit()
 }
 
 
-void usage()
+void usage(int exit_code)
 {
     puts(
         "bfc usage:\n"
         "   1)  Input source code in shell:                     bfc \n"
         "   2)  Run the JIT on a source file:                   bfc <FILENAME> \n"
         "   3)  Produce an ELF executable from a source file:   bfc -c <SOURCE_FILENAME> -o <OUTPUT_FILENAME> \n");
+    exit(exit_code);
 }
 
 
 int main(int argc, char** argv)
 {
     if (argc == 1) {
-        size_t _;
+        usize _;
         getline(&ctx.src, &_, stdin);
         jit();
         free(ctx.src);
     }
     if (argc == 2) {
         if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
-            usage();
-            exit(0);
+            usage(0);
         }
         char* filename = argv[1];
         FILE* f = fopen(filename, "rb");
@@ -343,33 +304,13 @@ int main(int argc, char** argv)
         free(ctx.src);
     }
     if (argc == 3 || argc == 4) {
-        usage();
-        exit(-1);
+        usage(-1);
     }
     if (argc == 5) {
         if (strcmp(argv[1], "-c") != 0 || strcmp(argv[3], "-o") != 0) {
-            usage();
-            exit(-1);
+            usage(-1);
         }
         printf("Generating an ELF file is not yet implemented!\n");
     }
     return 0;
-
-    // ctx.src =
-
-    // // io test
-    // //",.";
-
-    // // memory initialization test: should print 'a'
-    // //"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.";
-
-    // // forward jump test -- works
-    // //"[+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++]+++++++++++"
-    // //"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.";
-
-    // // loop test (should add two input chars)
-    // //",>,<[->+<]>.";
-
-    // // Hello world
-    // "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
 }

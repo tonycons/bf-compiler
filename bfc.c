@@ -32,9 +32,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+typedef int8_t i8;
 typedef uint8_t u8;
 typedef size_t usize;
 typedef int32_t i32;
+
 
 struct
 {
@@ -47,21 +49,77 @@ struct
 } ctx;
 
 
+void count_data_pointer_increments(usize src_pos, i32* out_incr, i32* out_count, usize* out_asm_size)
+{
+    *out_incr = 0;
+    *out_count = 0;
+    *out_asm_size = 0;
+    for (usize n = src_pos; (ctx.src[n] == '>' || ctx.src[n] == '<') && ctx.src[n] != '\0'; n++) {
+        if (ctx.src[n] == '>')
+            (*out_incr)++;
+        else
+            (*out_incr)--;
+        (*out_count)++;
+    }
+    if (*out_incr == 1) {
+        *out_asm_size = 3;  // sizeof inc rsi
+    } else if (*out_incr == -1) {
+        *out_asm_size = 3;  // sizeof dec rsi
+    } else if (*out_incr > 0) {
+        *out_asm_size = *out_incr <= 0x7f ? 4 : 7;
+    } else if (*out_incr < 0) {
+        *out_asm_size = (-(*out_incr)) <= 0x7f ? 4 : 7;
+    }
+}
+
+void gen_data_pointer_increment(u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
+{
+    i32 incr, count;
+    usize asmsize;
+    count_data_pointer_increments(*out_src_pos, &incr, &count, &asmsize);
+
+    if (incr == 1) {
+        memcpy(out_asm, (u8[]){0x48, 0xff, 0xc6 /* inc rsi */}, 3);
+        *out_asm_pos += 3;
+    } else if (incr == -1) {
+        memcpy(out_asm, (u8[]){0x48, 0xff, 0xce /* dec rsi */}, 3);
+        *out_asm_pos += 3;
+    } else if (incr > 0) {
+        if (incr <= 0x7f) {
+            memcpy(out_asm, (u8[]){0x48, 0x83, 0xc6, (u8)incr /* add rsi, imm8 */}, 4);
+            *out_asm_pos += 4;
+        } else {
+            union {
+                i32 x;
+                u8 b[4];
+            } u = {.x = incr};
+            memcpy(out_asm, (u8[]){0x48, 0x81, 0xc6, u.b[0], u.b[1], u.b[2], u.b[3] /* add rsi, imm32 */}, 7);
+            *out_asm_pos += 7;
+        }
+    } else if (incr < 0) {
+        if ((-incr) <= 0x7f) {
+            memcpy(out_asm, (u8[]){0x48, 0x83, 0xee, (u8)(-incr) /* sub rsi, imm8 */}, 4);
+            *out_asm_pos += 4;
+        } else {
+            union {
+                i32 x;
+                u8 b[4];
+            } u = {.x = -incr};
+            memcpy(out_asm, (u8[]){0x48, 0x81, 0xee, u.b[0], u.b[1], u.b[2], u.b[3] /* sub rsi, imm32 */}, 7);
+            *out_asm_pos += 7;
+        }
+    }
+    (*out_src_pos) += count;
+}
+
+
 void gen(char op, u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
 {
     switch (op) {
     // Increment the data pointer by one (to point to the next cell to the right).
-    case '>': {
-        memcpy(out_asm, (u8[]){0x48, 0xff, 0xc6 /* inc rsi */}, 3);
-        *out_asm_pos += 3;
-        break;
-    }
-    // Decrement the data pointer by one (to point to the next cell to the left). Undefined if at 0.
-    case '<': {
-        memcpy(out_asm, (u8[]){0x48, 0xff, 0xce /* dec rsi */}, 3);
-        *out_asm_pos += 3;
-        break;
-    }
+    case '>':
+    case '<': gen_data_pointer_increment(out_asm, out_asm_pos, out_src_pos); return;
+
     // Increment the byte at the data pointer by one modulo 256.
     case '+': {
         usize count = 0;
@@ -97,9 +155,9 @@ void gen(char op, u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
     // Output the byte at the data pointer.
     case '.': {
         static u8 const code[] = {
-            0xbf, 0x01, 0x00, 0x00, 0x00,  // mov edi, 1
-            0xb8, 0x01, 0x00, 0x00, 0x00,  // mov eax, 1
-            0x0f, 0x05,                    // syscall
+            0x89, 0xd7,  // mov edi, edx (edx is always 1; shortcut to set these regs to 1)
+            0x89, 0xd0,  // mov eax, edi
+            0x0f, 0x05,  // syscall
         };
         memcpy(out_asm, code, sizeof(code));
         *out_asm_pos += sizeof(code);
@@ -129,7 +187,14 @@ void gen(char op, u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
             assert(ctx.src[*out_src_pos + src_offset] != '\0');
             switch (ctx.src[*out_src_pos + src_offset]) {
             case '>':
-            case '<': byte_offset += 3; break;
+            case '<': {
+                i32 incr, count;
+                usize asmsize;
+                count_data_pointer_increments(*out_src_pos + src_offset, &incr, &count, &asmsize);
+                byte_offset += asmsize;
+                src_offset += count;
+                continue;
+            }
             case '-':
             case '+': {
                 char ch = ctx.src[*out_src_pos + src_offset];
@@ -141,7 +206,7 @@ void gen(char op, u8* out_asm, usize* out_asm_pos, usize* out_src_pos)
                 src_offset += n;
                 continue;
             }
-            case '.': byte_offset += 12; break;
+            case '.':
             case ',': byte_offset += 6; break;
             case '[':
                 byte_offset += 9;
@@ -249,6 +314,11 @@ void jit()
     };
     memcpy(ctx.exec_buf + ctx.exec_pos, code, sizeof(code));
     ctx.exec_pos += sizeof(code);
+
+    // for (size_t n = 0; n < ctx.exec_pos; n++) {
+    //     printf("%02x", ctx.exec_buf[n]);
+    // }
+    puts("");
 
     /**
      Execute the code

@@ -1,6 +1,7 @@
 # bf-compiler
 A JIT compiler I created that generates and runs machine code for this [toy programming language](https://en.wikipedia.org/wiki/Brainfuck).
 
+It successfully runs a variety of complex programs, including "The Lost Kingdom", a text-based adventure game with 2MB of code.
 Note that this was written in a few hours, and is not necessarily bug-free/memory safe. Use at your own risk!
 
 ### Setup:

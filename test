@@ -1,4 +1,4 @@
 #!/bin/bash
 
 mkdir -p build
-clang -O0 -glldb ./bfc.c -o build/bfc && ./build/bfc "$@"
+clang -O0 -glldb -Wall ./bfc.c -o build/bfc && ./build/bfc "$@"

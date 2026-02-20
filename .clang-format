@@ -1,0 +1,104 @@
+---
+
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+DisableFormat: false
+TabWidth: 4
+
+UseTab: Never
+BinPackArguments: true
+BinPackParameters: true
+ColumnLimit: 120
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveDeclarations:
+  Enabled: false
+  AcrossEmptyLines: true
+  AcrossComments: false
+
+
+
+AllowShortCaseLabelsOnASingleLine: true
+#AllowShortCaseExpressionOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortLambdasOnASingleLine: Inline
+
+AlwaysBreakTemplateDeclarations: Yes
+
+BreakAfterAttributes: Leave
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterCaseLabel: false
+    AfterClass: false
+    AfterControlStatement: MultiLine
+    AfterEnum: false
+    AfterFunction: true
+    AfterNamespace: false
+    AfterStruct: true
+    AfterUnion: false
+    BeforeCatch: true
+    BeforeElse: false
+    BeforeLambdaBody: false
+    BeforeWhile: false
+    #IndentBraces
+    SplitEmptyFunction: false
+    SplitEmptyRecord: false
+    SplitEmptyNamespace: false
+BreakBeforeTernaryOperators: false
+CompactNamespaces: false
+
+IndentAccessModifiers: false
+IndentCaseBlocks: false
+IndentCaseLabels: false
+IndentExternBlock: false
+IndentGotoLabels: true
+IndentPPDirectives: None
+IndentWidth: 4
+IndentWrappedFunctionNames: false
+InsertNewlineAtEOF: true
+
+MaxEmptyLinesToKeep: 2
+NamespaceIndentation: None
+PackConstructorInitializers: NextLineOnly
+PointerAlignment: Left
+QualifierAlignment: Custom
+QualifierOrder: ['constexpr', 'inline', 'static', 'type', 'const', 'volatile']
+ReferenceAlignment: Pointer
+ReflowComments: true
+RequiresClausePosition: WithPreceding
+SeparateDefinitionBlocks: Leave
+ShortNamespaceLines: 5
+SortIncludes: Never
+SortUsingDeclarations: Never
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceAroundPointerQualifiers: Default
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+    AfterControlStatements: true
+    AfterFunctionDefinitionName: false
+    AfterOverloadedOperator: false
+    AfterRequiresInClause: true
+    AfterRequiresInExpression: true
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: 1
+WhitespaceSensitiveMacros: []
